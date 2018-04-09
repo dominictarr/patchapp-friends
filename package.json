@@ -1,0 +1,20 @@
+{
+  "name": "patchapp-friends",
+  "description": "",
+  "version": "1.0.0",
+  "homepage": "https://github.com/dominictarr/patchapp-friends",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/dominictarr/patchapp-friends.git"
+  },
+  "dependencies": {
+    "hyperscript": "^2.0.2",
+    "ssb-ref": "^2.9.1"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "set -e; for t in test/*.js; do node $t; done"
+  },
+  "author": "'Dominic Tarr' <dominic.tarr@gmail.com> (dominictarr.com)",
+  "license": "MIT"
+}
