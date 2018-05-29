@@ -1,6 +1,7 @@
 var isFeed = require('ssb-ref').isFeed
 var h = require('hyperscript')
-
+var pull = require('pull-stream')
+var paramap = require('pull-paramap')
 
 exports.gives = {
   app: { view: true },
@@ -73,12 +74,25 @@ exports.create = function (api) {
           if(data.follows && data.followers) next()
         })
 
+        function slowAdd (set, fn) {
+          pull(
+            pull.values(set),
+            paramap(function (k, cb) {
+              setImmediate(function () {
+                cb(null, fn(k))
+              })
+            }, 4),
+            pull.drain()
+          )
+        }
+
         function next () {
-          for(var k in data.follows) {
+          slowAdd(Object.keys(data.follows), function (k) {
             append(data.followers[k] ? friends : follows, k)
-          }
-          for(var k in data.followers)
+          })
+          slowAdd(Object.keys(data.followers), function (k) {
             if(!data.follows[k]) append(followers, k)
+          })
         }
 
 
@@ -162,5 +176,14 @@ exports.create = function (api) {
     }
   }
 }
+
+
+
+
+
+
+
+
+
 
 
