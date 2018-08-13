@@ -26,6 +26,8 @@ exports.needs = {
   }
 }
 
+function noop () {}
+
 exports.create = function (api) {
   document.head.appendChild(h('style', {textContent:
     '.avatar__relation img { width: 32px; height: 32px; }\n' +
@@ -39,9 +41,10 @@ exports.create = function (api) {
     }, cb)
   }
 
-  function image (id) {
+  function image (id, cb) {
     var img = h('img')
-    api.avatar.image(id, function (src) { img.src = src })
+    if(!cb) cb = noop
+    api.avatar.image(id, function (src) { cb(null, img.src = src) })
     return img
   }
 
@@ -56,8 +59,8 @@ exports.create = function (api) {
         var follows = h('div.avatar__relation')
         var followers = h('div.avatar__relation')
 
-        function append (el, id) {
-          el.appendChild(h('a', {href: id}, image(id)))
+        function append (el, id, cb) {
+          el.appendChild(h('a', {href: id}, image(id, cb)))
         }
 
         //categories:
@@ -79,22 +82,48 @@ exports.create = function (api) {
             pull.values(set),
             paramap(function (k, cb) {
               setImmediate(function () {
-                cb(null, fn(k))
+//                cb(null, fn(k, cb))
+                fn(k, cb)
               })
-            }, 4),
+            }, 32),
             pull.drain()
           )
         }
 
+        var countFriends = h('span.friends__count')
+        var countFollows = h('span.follows__count')
+        var countFollowers = h('span.followers__count')
+
         function next () {
-          slowAdd(Object.keys(data.follows), function (k) {
-            append(data.followers[k] ? friends : follows, k)
+          var keys_follows = []
+          var keys_followers = []
+          var keys_friends = []
+
+          for(var k in data.follows)
+            if(data.follows[k] && data.followers[k])
+              keys_friends.push(k)
+            else if(data.follows[k])
+              keys_follows.push(k)
+          for(var k in data.followers)
+            if(!data.follows[k])
+              keys_followers.push(k)
+
+          countFriends.textContent = ' ('+keys_friends.length+')'
+          countFollows.textContent = ' ('+keys_follows.length+')'
+          countFollowers.textContent = ' ('+keys_followers.length+')'
+
+          var show = 84
+
+          slowAdd(keys_friends.slice(0, show), function (k, cb) {
+            append(friends, k, cb)
           })
-          slowAdd(Object.keys(data.followers), function (k) {
-            if(!data.follows[k]) append(followers, k)
+          slowAdd(keys_follows.slice(0, show), function (k, cb) {
+            append(follows, k, cb)
+          })
+          slowAdd(keys_followers.slice(0, show), function (k, cb) {
+            append(followers, k, cb)
           })
         }
-
 
         return h('div.Avatar__view',
           h('div.Avatar__header',
@@ -103,15 +132,15 @@ exports.create = function (api) {
           //actions: follow, etc
           h('div.Avatar__actions', api.avatar.action(id)),
           h('div.friends',
-            h('h2', 'Friends'),
+            h('h2', 'Friends', countFriends),
             friends
           ),
           h('div.followers',
-            h('h2', 'Followers'),
+            h('h2', 'Followers', countFollowers),
             followers
           ),
           h('div.follows',
-            h('h2', 'Follows'),
+            h('h2', 'Follows', countFollows),
             follows
           )
         )
@@ -176,6 +205,7 @@ exports.create = function (api) {
     }
   }
 }
+
 
 
 
