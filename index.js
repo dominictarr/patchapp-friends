@@ -26,6 +26,34 @@ exports.needs = {
   }
 }
 
+var keys = Object.keys
+
+function intersect (a, b) {
+  var c = {}
+  for(var k in a)
+    if(b[k] == true && a[k] == true) c[k] = true
+  return c
+}
+
+function subtract (a, b) {
+  var c = {}
+  for(var k in a)
+    if(b[k] !== true && a[k] == true) c[k] = true
+  return c
+}
+
+function each (o, fn) {
+  for(var k in o)
+    fn(k, o[k], o)
+}
+
+function clean (obj) {
+  var _o = {}
+  for(var k in obj)
+    if(obj[k]) _o[k] = obj[k]
+  return _o
+}
+
 function noop () {}
 
 exports.create = function (api) {
@@ -55,26 +83,35 @@ exports.create = function (api) {
 
         if(!isFeed(id)) return
 
-        var friends = h('div.avatar__relation')
-        var follows = h('div.avatar__relation')
-        var followers = h('div.avatar__relation')
-
         function append (el, id, cb) {
           el.appendChild(h('a', {href: id}, image(id, cb)))
         }
 
+        var relations = h('div.avatar_relations')
+
         //categories:
         //friends, follows, followers
         //mutual friends, friends that you follow, friends that follow you, other friends
-        var data = {followers: null, follows: null}
+        var data = {
+          followers: null, follows: null,
+          your_followers: null, you_follow: null
+        }
+
         api.sbot.friends.get({source: id}, function (err, follows) {
-          data.follows = follows
-          if(data.follows && data.followers) next()
+          data.follows = clean(follows)
         })
 
         api.sbot.friends.get({dest: id}, function (err, followers) {
-          data.followers = followers
-          if(data.follows && data.followers) next()
+          data.followers = clean(followers)
+          next()
+        })
+        api.sbot.friends.get({source: api.identity.main()}, function (err, follows) {
+          data.you_follow = clean(follows)
+          next()
+        })
+        api.sbot.friends.get({dest: api.identity.main()}, function (err, followers) {
+          data.your_followers = clean(followers)
+          next()
         })
 
         function slowAdd (set, fn) {
@@ -82,47 +119,67 @@ exports.create = function (api) {
             pull.values(set),
             paramap(function (k, cb) {
               setImmediate(function () {
-//                cb(null, fn(k, cb))
                 fn(k, cb)
               })
-            }, 32),
+            }, 8),
             pull.drain()
           )
         }
 
-        var countFriends = h('span.friends__count')
-        var countFollows = h('span.follows__count')
-        var countFollowers = h('span.followers__count')
-
         function next () {
-          var keys_follows = []
-          var keys_followers = []
-          var keys_friends = []
+          if(!(data.follows && data.followers && data.you_follow && data.your_followers)) return
 
-          for(var k in data.follows)
-            if(data.follows[k] && data.followers[k])
-              keys_friends.push(k)
-            else if(data.follows[k])
-              keys_follows.push(k)
-          for(var k in data.followers)
-            if(!data.follows[k])
-              keys_followers.push(k)
+          var friends = intersect(data.follows, data.followers)
+          var your_friends =
+            intersect(data.you_follow, data.your_followers)
 
-          countFriends.textContent = ' ('+keys_friends.length+')'
-          countFollows.textContent = ' ('+keys_follows.length+')'
-          countFollowers.textContent = ' ('+keys_followers.length+')'
+          var follows = subtract(data.follows, friends)
+          var followers = subtract(data.followers, friends)
+
+          var follows_that_follow_you = intersect(follows, data.your_followers)
+          var followers_you_follow = intersect(followers, data.you_follow)
+
+    //      followers_you_follow = follows_that_follow_you = {}
+
+          var sets = {
+            mutual_friends: intersect(friends, your_friends),
+            friends: subtract(friends, your_friends),
+            follows_that_follow_you: follows_that_follow_you,
+            follows: subtract(follows, follows_that_follow_you),
+            followers_you_follow: followers_you_follow,
+            followers: subtract(followers, followers_you_follow),
+          }
 
           var show = 84
 
-          slowAdd(keys_friends.slice(0, show), function (k, cb) {
-            append(friends, k, cb)
+          each(sets, function (k, set) {
+            var relation = h('div.avatar__relation')
+            var ary = keys(set)
+            relations.appendChild(h('div.avatar__relation_'+k,
+              h('h2', k.replace(/_/g, ' '), ' (', ary.length, ')'),
+              relation
+            ))
+            slowAdd(ary.slice(0, show), function (k, cb) {
+              append(relation, k, cb)
+            })
           })
-          slowAdd(keys_follows.slice(0, show), function (k, cb) {
-            append(follows, k, cb)
-          })
-          slowAdd(keys_followers.slice(0, show), function (k, cb) {
-            append(followers, k, cb)
-          })
+
+
+//          countFriends.textContent = ' ('+keys_friends.length+')'
+//          countFollows.textContent = ' ('+keys_follows.length+')'
+//          countFollowers.textContent = ' ('+keys_followers.length+')'
+//
+//          var show = 84
+//
+//          slowAdd(keys_friends.slice(0, show), function (k, cb) {
+//            append(friends, k, cb)
+//          })
+//          slowAdd(keys_follows.slice(0, show), function (k, cb) {
+//            append(follows, k, cb)
+//          })
+//          slowAdd(keys_followers.slice(0, show), function (k, cb) {
+//            append(followers, k, cb)
+//          })
         }
 
         return h('div.Avatar__view',
@@ -131,18 +188,19 @@ exports.create = function (api) {
           ),
           //actions: follow, etc
           h('div.Avatar__actions', api.avatar.action(id)),
-          h('div.friends',
-            h('h2', 'Friends', countFriends),
-            friends
-          ),
-          h('div.followers',
-            h('h2', 'Followers', countFollowers),
-            followers
-          ),
-          h('div.follows',
-            h('h2', 'Follows', countFollows),
-            follows
-          )
+          relations
+//          h('div.friends',
+//            h('h2', 'Friends', countFriends),
+//            friends
+//          ),
+//          h('div.followers',
+//            h('h2', 'Followers', countFollowers),
+//            followers
+//          ),
+//          h('div.follows',
+//            h('h2', 'Follows', countFollows),
+//            follows
+//          )
         )
 
       }
@@ -205,15 +263,4 @@ exports.create = function (api) {
     }
   }
 }
-
-
-
-
-
-
-
-
-
-
-
 
