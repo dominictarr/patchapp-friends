@@ -121,7 +121,7 @@ exports.create = function (api) {
               setImmediate(function () {
                 fn(k, cb)
               })
-            }, 8),
+            }, 32),
             pull.drain()
           )
         }
@@ -228,7 +228,7 @@ exports.create = function (api) {
         a = h('a', {href: '#', onclick: function () {
           amFollowing(id, function (err, isFollowing) {
             api.confirm.show({
-              type: 'contact', contact: id, following: true
+              type: 'contact', contact: id, following: !isFollowing
             }, null, setContent)
           })
         }})
